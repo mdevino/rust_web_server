@@ -55,8 +55,14 @@ struct Worker {
 
 impl Worker {
     fn new(id: usize, receiver: Arc<Mutex<mpsc::Receiver<Job>>>) -> Self {
-        let thread = thread::spawn(|| {
-            receiver;
+        let thread = thread::spawn(move || loop {
+            let job = receiver
+                .lock()
+                .expect("Error acquiring MutexGuard, maybe it is in a poisoned state?")
+                .recv()
+                .unwrap();
+            println!("Worker {id} got a job; executing...");
+            job();
         });
 
         println!("Creating worker {id}");

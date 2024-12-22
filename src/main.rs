@@ -1,11 +1,9 @@
-use core::panic;
 use std::{
     fs,
     io::{prelude::*, BufReader},
     net::{TcpListener, TcpStream},
     thread,
     time::Duration,
-    usize,
 };
 
 use rust_web_server::{ThreadPool, BIND_ADDRESS};
