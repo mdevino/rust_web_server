@@ -1,20 +1,23 @@
+use core::panic;
 use std::{
     fs,
     io::{prelude::*, BufReader},
     net::{TcpListener, TcpStream},
     thread,
     time::Duration,
+    usize,
 };
 
-const BIND: &str = "127.0.0.1:7878";
+use rust_web_server::{ThreadPool, BIND_ADDRESS};
 
 fn main() {
-    let listener = TcpListener::bind(BIND).unwrap();
+    let listener = TcpListener::bind(BIND_ADDRESS).unwrap();
+    let pool = ThreadPool::new(4);
 
     for stream in listener.incoming() {
         let stream = stream.unwrap();
 
-        thread::spawn(|| {
+        pool.execute(|| {
             handle_connection(stream);
         });
     }
