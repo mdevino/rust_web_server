@@ -8,7 +8,7 @@ pub const BIND_ADDRESS: &str = "127.0.0.1:7878";
 
 pub struct ThreadPool {
     workers: Vec<Worker>,
-    sender: mpsc::Sender<Job>,
+    sender: Option<mpsc::Sender<Job>>,
 }
 
 type Job = Box<dyn FnOnce() + Send + 'static>;
@@ -35,7 +35,10 @@ impl ThreadPool {
             workers.push(Worker::new(id, receiver.clone()));
         }
 
-        ThreadPool { workers, sender }
+        ThreadPool {
+            workers,
+            sender: Some(sender),
+        }
     }
 
     pub fn execute<F>(&self, f: F)
@@ -44,28 +47,55 @@ impl ThreadPool {
     {
         let job = Box::new(f);
 
-        self.sender.send(job).unwrap();
+        self.sender.as_ref().unwrap().send(job).unwrap();
+    }
+}
+
+impl Drop for ThreadPool {
+    fn drop(&mut self) {
+        for worker in &mut self.workers {
+            if let Some(thread) = worker.thread.take() {
+                println!("Shutting down worker {}", worker.id);
+                thread.join().unwrap();
+            } else {
+                println!(
+                    "Tried shutting down worker {}, but it was already shutdown.",
+                    worker.id
+                );
+            }
+        }
     }
 }
 
 struct Worker {
     id: usize,
-    thread: thread::JoinHandle<()>,
+    thread: Option<thread::JoinHandle<()>>,
 }
 
 impl Worker {
     fn new(id: usize, receiver: Arc<Mutex<mpsc::Receiver<Job>>>) -> Self {
         let thread = thread::spawn(move || loop {
-            let job = receiver
+            let message = receiver
                 .lock()
                 .expect("Error acquiring MutexGuard, maybe it is in a poisoned state?")
-                .recv()
-                .unwrap();
-            println!("Worker {id} got a job; executing...");
-            job();
+                .recv();
+
+            match message {
+                Ok(job) => {
+                    println!("Worker {id} got a job; executing...");
+                    job();
+                }
+                Err(_) => {
+                    println!("Worker {id} got disconnected; shutting down...");
+                    break;
+                }
+            }
         });
 
         println!("Creating worker {id}");
-        Worker { id, thread }
+        Worker {
+            id,
+            thread: Some(thread),
+        }
     }
 }
